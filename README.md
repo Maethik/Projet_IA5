@@ -20,4 +20,14 @@ Je pense que l'approche 2 donnera de meilleurs résultat que la première. Cepan
 
 Je pense également que la première approche peut facilement poser un problème de surapprentissage sur les indicateurs temporelles explicites tel que les dates ou les nom d'époque (renaissance, moyen age, ...).
 
+Pour la méthode de vectorisation j'essaie deux méthodes :
+
+1. TF-IDF
+2. Embeddings
+
+Pour ce qui est des modèles utilisé :
+
+TF-IDF --> c'est le classifier
+Embeddings --> dangvantuan/sentence-camembert-base
+
 ## Partie 2 : Génération
