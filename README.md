@@ -18,6 +18,6 @@ Le jeu de données utilisé est `PleIAs/French-PD-Books`.
 
 Je pense que l'approche 2 donnera de meilleurs résultat que la première. Cepandant la deuxième nécessitera un travail d'exploration des données plus important.
 
-Je pense également que la première approche peut facilement poser un problème de surapprentissage sur les indicateurs temporelles explicites tel que les dates ou les nom d'époque (renaissance, moyen age, ...). 
+Je pense également que la première approche peut facilement poser un problème de surapprentissage sur les indicateurs temporelles explicites tel que les dates ou les nom d'époque (renaissance, moyen age, ...).
 
 ## Partie 2 : Génération
