@@ -28,6 +28,7 @@ Pour la méthode de vectorisation j'essaie deux méthodes :
 Pour ce qui est des modèles utilisé :
 
 TF-IDF --> c'est le classifier
-Embeddings --> dangvantuan/sentence-camembert-base
+Embeddings -->  dangvantuan/sentence-camembert-base <-- Pour mon PC
+                dangvantuan/sentence-camembert-large <-- Pour Morgoth
 
 ## Partie 2 : Génération
