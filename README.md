@@ -3,7 +3,7 @@
 - [ ] Introduction du rapport
 - [ ] Toute la première partie d'essaies (*Méthodes de classification essayées* & *Observations initiales*)
 - [ ] Comparaison de perf entre 10 ans et 50 ans (dans *Recalibrage et optimisations*)
-- [ ] Intégrer des morceaux de code dans les parties nécessaires
+- [ ] Mettre le code de la méthode clean_text initiale
 - [ ] Mentionner la réduction des données parce que prétraitément très long
 
 *Mathéo GUILBERT*
@@ -63,7 +63,21 @@ Avant de construire des représentations et d'entraîner des modèles, j'ai appl
 
 La suppression des numéros de pages est une étape délicate car leur mise en forme dépends de l'ouvrage et de l'éditeur le plus souvent. J'ai quand même repéré un écriture récurente : *-- [NUMERO DE PAGE] --*. J'ai supprimé ces cas là.
 
+Voici le code qui permet ce tratement :
+
+```py
+# CODE EN ATTENTE
+```
+
+Soit dit en passant, cette étape est très longue et pour réduire ce temps de traitement et aller plus vite sur la classification elle même, j'ai travaillé sur un echantillon du jeu de données.
+
+```py
+reduced_ds = ds['train'].shuffle(seed=42).select(range(5000)) # Echantillon réduit
+cleaned_ds = reduced_ds.map(clean_text, remove_columns=reduced_ds.column_names)
+```
+
 ## Méthodes de classification essayées
+
 
 
 ### Observations initiales
@@ -73,6 +87,7 @@ La suppression des numéros de pages est une étape délicate car leur mise en f
 
 Après ce premier aperçu, plusieurs choix d'optimisation ont été faits :
 
+* augmentation de la qualité des données par radicalisation du prétraitement des données
 * élargissement de la granularité temporelle : plutôt que prévoir par décénies, j'ai augmenté en périodes de 50 ans. Ce choix vise à capter des tendances lexicale et stylistiques plutôt que des variations annuelles insignifiantes.
 * changement de la métrique d'évaluation : j'ai utilisé la différence moyenne entre la date réelle et la date prédite (MAE temporelle en années) — c'est plus pertinent que la précision (*accuracy*).
 
@@ -80,15 +95,95 @@ Après ce premier aperçu, plusieurs choix d'optimisation ont été faits :
 
 * recherche de la plage d'années la plus pertinente pour la clarification. Avec cela j'espère pourvoir améliorer les performances et retrouver des périodes qui s'approchent des mouvements littéraires connus.
 
-**TODO :** Remplis ici : résultats comparatifs avant/après agrégation en 50 ans, et évolution de la métrique moyenne (graphique à insérer).
+### Pré traitement plus radical
+
+Malgrés le prétraitement déja appliqué aux données, il reste beaucoup d'impuretés. En plus de cela le prétraitement était de loins l'étape la plus longue du processus de classification car je cherchais des expressions dans les textes pour les enlever.
+
+Pour optimiser ce temps et l'efficacité de l'entrainement, j'ia simplifié les critères de prétraitement :
+
+* traitement des dates identiques au précedant
+* suppression de tous les sauts de lignes et tabulations
+* normalisation des caractères en minuscule
+* suppression de tous les caractère non alphabetique (comme précédemment)
+
+**Résultat :** tous les textes sont réduit à une suite de mots spérés par des espaces.
+
+```py
+def clean_text(example):
+    """
+        Nettoie le texte d'entrée
+    """
+    text = example["complete_text"]
+    date = example.get("date", None)
+
+    # --- Nettoyage de la date
+    if "-" in str(date) and date is not None:
+        parts = str(date).split("-")
+        if (parts[1].isdigit() and len(parts[1]) == 4) and parts[0] == "????":
+            date = str(parts[1])
+        else:
+            date = str(parts[0])
+
+    # --- Nettoyage de texte
+    text = (text.replace("\\n", " ")
+                .replace("\\r", " ")
+                .replace("\\t", " "))
+    
+    text = text.lower()
+
+    text = re.sub(r"[^a-zàâäæçéèêëïîôùûüœ\s]", " ", text)
+    
+    text = re.sub(r"\s+", " ", text).strip()
+
+    words = text.split()
+    filtered_words = [word for word in words if word not in french_stopwords]
+    text = " ".join(filtered_words)
+
+    return {"text": text, "date": str(date)}
+```
 
 ### Impacte de la granularité temporelle
 
 Pour grouper les données facilement, j'ai fais une méthode `create_period_label`.
 
 ```py
+def create_period_label(example, period_length=50):
+    """
+        Crée une étiquette de période basée sur l'année de publication.
+    """
+    try:
+        year = int(example['date'])
+        start_year = (year // period_length) * period_length
+        end_year = start_year + period_length - 1
 
+        return {"period": f"{start_year}-{end_year}"}
+    except (ValueError, TypeError):
+        return {"period": None}
+     
+dataset_with_labels = cleaned_ds.map(create_period_label)
+
+df = pd.DataFrame(dataset_with_labels)
+
+grouped_texts = df.groupby('period')['text'].apply(list)
+
+period_counts = grouped_texts.apply(len).sort_index()
+
+plt.figure(figsize=(10, 6))
+period_counts.plot(kind='bar', color='skyblue', edgecolor='black')
+
+plt.title('Nombre de textes par période', fontsize=16)
+plt.xlabel('Période', fontsize=12)
+plt.ylabel('Nombre de textes', fontsize=12)
+plt.xticks(rotation=45, ha='right')
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+
+plt.show()
 ```
+
+![Répartition des exemples par période de 50 ans](images/repartition-exemples-par-periode-50-ans.png)
+
+Ci-dessous le graphique d'évaluation des prédictions nous montres 
 
 ### Visualisations des différences entre périodes
 
