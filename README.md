@@ -3,8 +3,8 @@
 - [ ] Introduction du rapport
 - [ ] Toute la première partie d'essaies (*Méthodes de classification essayées* & *Observations initiales*)
 - [ ] Comparaison de perf entre 10 ans et 50 ans (dans *Recalibrage et optimisations*)
-- [ ] Mettre le code de la méthode clean_text initiale
-- [ ] Mentionner la réduction des données parce que prétraitément très long
+- [x] Mettre le code de la méthode clean_text initiale
+- [x] Mentionner la réduction des données parce que prétraitément très long
 
 *Mathéo GUILBERT*
 
@@ -66,7 +66,51 @@ La suppression des numéros de pages est une étape délicate car leur mise en f
 Voici le code qui permet ce tratement :
 
 ```py
-# CODE EN ATTENTE
+def clean_text(example):
+    text = example["complete_text"]
+    date = example.get("date", None)
+
+    # Si la date contient un "-", on essaie d'extraire l'année connue (format "1234-????" ou "????-1234") ou moyenne des deux années
+    if "-" in str(date) and date is not None:
+        parts = str(date).split("-")
+        if (parts[1].isdigit() and len(parts[1]) == 4) and parts[0] == "????":
+            date = str(parts[1])
+        else:
+            date = str(parts[0])
+
+    # 1. Retirer les numéros de page
+    text = re.sub(r"[—\-–]\s*\d+\s*[—\-–]", " ", text)
+    
+    # 2. Corriger les apostrophes et guillemets échappés
+    text = text.replace("\\'", "'")
+    text = text.replace("\\\"", "\"")
+    text = text.replace("\\n", " ")
+    text = text.replace("\\r", " ")
+    text = text.replace("\\t", " ")
+    
+    # 3. Corriger les mots coupés (pattern plus précis)
+    text = re.sub(r'([a-zàâäæçéèêëïîôùûüœ])\s+([a-zàâäæçéèêëïîôùûüœ]{2,})', 
+                  r'\1\2', text)
+    
+    # 4. Corriger les cas avec plusieurs espaces
+    text = re.sub(r'([a-zàâäæçéèêëïîôùûüœ])\s{2,}([a-zàâäæçéèêëïîôùûüœ])', 
+                  r'\1\2', text)
+    
+    # 5. Normaliser les espaces multiples
+    text = re.sub(r"\s+", " ", text)
+    
+    # 6. Nettoyer les caractères spéciaux
+    text = re.sub(r"[^\w\s\.,;:\?!'\-\"«»À-ÖØ-öø-ÿœŒ]", " ", text)
+    
+    # 7. Re-normaliser après nettoyage
+    text = re.sub(r"\s+", " ", text)
+    
+    # 8. Corriger la ponctuation
+    text = re.sub(r"\s+([,.\?!;:])", r"\1", text)
+    text = re.sub(r"([,.\?!;:])\s*([,.\?!;:])", r"\1\2", text)
+    
+    text = text.strip()
+    return {"text": text, "date": str(date)}
 ```
 
 Soit dit en passant, cette étape est très longue et pour réduire ce temps de traitement et aller plus vite sur la classification elle même, j'ai travaillé sur un echantillon du jeu de données.
@@ -77,6 +121,31 @@ cleaned_ds = reduced_ds.map(clean_text, remove_columns=reduced_ds.column_names)
 ```
 
 ## Méthodes de classification essayées
+
+J'ai essayé les méthodes par TF-IDF et par embeddings avec un modèle CamemBERT-base (environ 100M de paramètres).
+
+Mais d'abord il y a une étape de préparation des données.
+
+Pour grouper les données facilement, j'ai fais une méthode `create_period_label`.
+
+J'ai groupé les exemples par période pour faire l'entrainement dessus.
+
+```py
+def create_period_label(example, period_length=50):
+    """
+        Crée une étiquette de période basée sur l'année de publication.
+    """
+    try:
+        year = int(example['date'])
+        start_year = (year // period_length) * period_length
+        end_year = start_year + period_length - 1
+
+        return {"period": f"{start_year}-{end_year}"}
+    except (ValueError, TypeError):
+        return {"period": None}
+     
+dataset_with_labels = cleaned_ds.map(create_period_label)
+```
 
 
 
@@ -144,50 +213,13 @@ def clean_text(example):
 
 ### Impacte de la granularité temporelle
 
-Pour grouper les données facilement, j'ai fais une méthode `create_period_label`.
 
-```py
-def create_period_label(example, period_length=50):
-    """
-        Crée une étiquette de période basée sur l'année de publication.
-    """
-    try:
-        year = int(example['date'])
-        start_year = (year // period_length) * period_length
-        end_year = start_year + period_length - 1
 
-        return {"period": f"{start_year}-{end_year}"}
-    except (ValueError, TypeError):
-        return {"period": None}
-     
-dataset_with_labels = cleaned_ds.map(create_period_label)
 
-df = pd.DataFrame(dataset_with_labels)
-
-grouped_texts = df.groupby('period')['text'].apply(list)
-
-period_counts = grouped_texts.apply(len).sort_index()
-
-plt.figure(figsize=(10, 6))
-period_counts.plot(kind='bar', color='skyblue', edgecolor='black')
-
-plt.title('Nombre de textes par période', fontsize=16)
-plt.xlabel('Période', fontsize=12)
-plt.ylabel('Nombre de textes', fontsize=12)
-plt.xticks(rotation=45, ha='right')
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.tight_layout()
-
-plt.show()
-```
-
-![Répartition des exemples par période de 50 ans](images/repartition-exemples-par-periode-50-ans.png)
-
-Ci-dessous le graphique d'évaluation des prédictions nous montres 
 
 ### Visualisations des différences entre périodes
 
-Pour comprendre quelles caractéristiques distinguent les périodes, j'ai généré des nuages de mots par période. Méthode : calcul de TF‑IDF par groupe temporel, puis génération d'un WordCloud à partir des mots les plus importants (somme des scores TF‑IDF sur la période).
+Pour comprendre quelles caractéristiques distinguent les périodes, j'ai généré des nuages de mots par période. J'ai effectué un calcul de TF‑IDF par groupe temporel, puis une génération d'un nuage de mots à partir des mots les plus importants (somme des scores TF‑IDF sur la période).
 
 ```py
 # Paramètres pour TF-IDF et Word Cloud
@@ -223,3 +255,7 @@ for period, texts in grouped_texts.items():
 Voici le résultat par période de *50 ans*.
 
 ![Nuages de mots par période de 50 ans](images/nuages-mots-periode-50-ans.png)
+
+
+
+![Prédiction des période (50 ans)](images/prediction-periode-50-ans.png)
