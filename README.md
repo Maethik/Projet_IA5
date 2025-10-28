@@ -277,3 +277,13 @@ sgd_classifier_emb = SGDClassifier(
 sgd_classifier_emb.fit(X_train_embeddings, train_labels)
 ```
 
+## 6\. Comparaison et évaluation
+
+```md
+A ajouter au rapport :
+* Recherche de la période optimale par nuage de mots et cluster
+* Comparaison de TF-IDF et Embeddings
+  * graphiques de l'écart prédiction / réelle
+  * valeur moyen différence prédite / réelle
+* Comparaison de périodes 50 et 10 ans
+```
