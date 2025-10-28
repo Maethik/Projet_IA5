@@ -62,7 +62,7 @@ Compte tenu du temps de prétraitement et d'entraînement, j'ai effectué mes ex
 
 Deux fonctions de nettoyage ont été testées. La première (`clean_text_old`) était une tentative de nettoyage en profondeur à base de regex.
 
-```python
+```py
 # Ancienne version
 def clean_text(example):
     text = example["complete_text"]
@@ -76,34 +76,34 @@ def clean_text(example):
         else:
             date = str(parts[0])
 
-    # 1. Retirer les numéros de page
+    # Retirer les numéros de page
     text = re.sub(r"[—\-–]\s*\d+\s*[—\-–]", " ", text)
     
-    # 2. Corriger les apostrophes et guillemets échappés
+    # Corriger les apostrophes et guillemets échappés
     text = text.replace("\\'", "'")
     text = text.replace("\\\"", "\"")
     text = text.replace("\\n", " ")
     text = text.replace("\\r", " ")
     text = text.replace("\\t", " ")
     
-    # 3. Corriger les mots coupés (pattern plus précis)
+    # Corriger les mots coupés (pattern plus précis)
     text = re.sub(r'([a-zàâäæçéèêëïîôùûüœ])\s+([a-zàâäæçéèêëïîôùûüœ]{2,})', 
                   r'\1\2', text)
     
-    # 4. Corriger les cas avec plusieurs espaces
+    # Corriger les cas avec plusieurs espaces
     text = re.sub(r'([a-zàâäæçéèêëïîôùûüœ])\s{2,}([a-zàâäæçéèêëïîôùûüœ])', 
                   r'\1\2', text)
     
-    # 5. Normaliser les espaces multiples
+    # Normaliser les espaces multiples
     text = re.sub(r"\s+", " ", text)
     
-    # 6. Nettoyer les caractères spéciaux
+    # Nettoyer les caractères spéciaux
     text = re.sub(r"[^\w\s\.,;:\?!'\-\"«»À-ÖØ-öø-ÿœŒ]", " ", text)
     
-    # 7. Re-normaliser après nettoyage
+    # Re-normaliser après nettoyage
     text = re.sub(r"\s+", " ", text)
     
-    # 8. Corriger la ponctuation
+    # Corriger la ponctuation
     text = re.sub(r"\s+([,.\?!;:])", r"\1", text)
     text = re.sub(r"([,.\?!;:])\s*([,.\?!;:])", r"\1\2", text)
     
@@ -123,8 +123,7 @@ Cette fonction s'est avérée complexe et pas nécessairement plus performante.
 
 Pour l'approche par embeddings, j'ai opté pour une version simplifiée, se concentrant sur la miniscule, la suppression de la ponctuation et des stopwords.
 
-```python
-# Version actuelle (depuis work.ipynb)
+```py
 def clean_text(example):
     """
         Nettoie le texte d'entrée
@@ -132,7 +131,7 @@ def clean_text(example):
     text = example["complete_text"]
     date = example.get("date", None)
 
-    # --- Nettoyage de la date
+    # Nettoyage de la date
     if "-" in str(date) and date is not None:
         parts = str(date).split("-")
         if (parts[1].isdigit() and len(parts[1]) == 4) and parts[0] == "????"
@@ -140,7 +139,7 @@ def clean_text(example):
         else:
             date = str(parts[0])
 
-    # --- Nettoyage de texte
+    # Nettoyage de texte
     text = (text.replace("\\\\n", " ")
                 .replace("\\\\r", " ")
                 .replace("\\\\t", " "))
@@ -188,7 +187,7 @@ french_stopwords = set([
 
 Pour la classification, j'ai groupé les textes par périodes de 10 ans et 50 ans.
 
-```python
+```py
 def create_period_label(example, period_length=50):
      """
           Crée une étiquette de période basée sur l'année de publication.
@@ -209,7 +208,7 @@ dataset_with_labels = cleaned_ds.map(create_period_label)
 
 Ma première approche a servi de base. J'ai utilisé un `TfidfVectorizer` pour transformer le texte en vecteurs de fréquence de mots, puis entraîné un `SGDClassifier`.
 
-```python
+```py
 def train_and_evaluate_tfidf(dataset, period_length_value):
     
     # Séparer en ensembles d'entraînement (80%) et de test (20%)
@@ -233,13 +232,35 @@ def train_and_evaluate_tfidf(dataset, period_length_value):
     sgd_classifier = SGDClassifier(loss='log_loss', random_state=42, max_iter=1000, tol=1e-3)
     sgd_classifier.fit(X_train_tfidf, y_train)
     
-    # Évaluation
-    y_pred_sgd = sgd_classifier.predict(X_test_tfidf)
-    accuracy = accuracy_score(y_test, y_pred_sgd)
-
-    print(f"Accuracy: {accuracy:.4f}")
-    print(classification_report(y_test, y_pred_sgd, zero_division=0))
-    
     return sgd_classifier, tfidf_vectorizer, X_test, y_test
+```
+
+## 5\. Classification sémantique par Embeddings (Seconde approche)
+
+L'objectif est de transformer chaque texte en un vecteur qui représente son sens. Des textes sémantiquement similaires auront des vecteurs proches.
+
+Le modèle choisi est [dangvantuan/sentence-camembert-base](https://huggingface.co/dangvantuan/sentence-camembert-base), il spécialisé pour le français.
+
+### 5.2. Implémentation
+
+Le code ci-dessous, illustre le chargement du modèle d'embedding et l'entraînement du classifieur :
+
+```py
+# Charger le modèle
+model = SentenceTransformer("dangvantuan/sentence-camembert-base")
+
+# Génération des embeddings
+# train_texts et test_texts sont créés lors du prétraitement
+X_train_embeddings = model.encode(train_texts, show_progress_bar=True)
+X_test_embeddings = model.encode(test_texts, show_progress_bar=True)
+
+# Entrainement
+sgd_classifier_emb = SGDClassifier(
+    loss='log_loss', 
+    random_state=42, 
+    max_iter=1000, 
+    tol=1e-3
+)
+sgd_classifier_emb.fit(X_train_embeddings, train_labels)
 ```
 
