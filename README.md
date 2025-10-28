@@ -235,13 +235,26 @@ def train_and_evaluate_tfidf(dataset, period_length_value):
     return sgd_classifier, tfidf_vectorizer, X_test, y_test
 ```
 
-## 5\. Classification sémantique par Embeddings (Seconde approche)
+Pour l'évaluation de ce modèle j'ai utilise la précision brut. Elle n'était pas très bonne car l'objectif de cette étude est de s'approcher de la valeur de la date et non d'être exact
+
+## 5\. Amélioration (Seconde approche)
+
+### 5.1. Constats et optimisations
+Après ce premier aperçu, plusieurs choix d'optimisation ont été faits :
+
+* augmentation de la qualité des données par radicalisation du prétraitement des données ([voir la partie pré-traitement](#32-prétraitement-des-textes))
+
+* élargissement de la granularité temporelle : plutôt que prévoir par décénies, j'ai augmenté en périodes de 50 ans. Ce choix vise à capter des tendances lexicale et stylistiques plutôt que des variations annuelles insignifiantes.
+
+* changement de la métrique d'évaluation : j'ai utilisé la différence moyenne entre la date réelle et la date prédite (MAE temporelle en années) — c'est plus pertinent que la précision (accuracy).
+
+### 5.2. Implémentation
+
+J'ai opté pour la création d'embeddings de phrases avec un modèle transformer pré-entrainé pour saisir la sémantique et le contexte.
 
 L'objectif est de transformer chaque texte en un vecteur qui représente son sens. Des textes sémantiquement similaires auront des vecteurs proches.
 
 Le modèle choisi est [dangvantuan/sentence-camembert-base](https://huggingface.co/dangvantuan/sentence-camembert-base), il spécialisé pour le français.
-
-### 5.2. Implémentation
 
 Le code ci-dessous, illustre le chargement du modèle d'embedding et l'entraînement du classifieur :
 
