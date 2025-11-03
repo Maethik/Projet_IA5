@@ -204,86 +204,143 @@ def create_period_label(example, period_length=50):
 dataset_with_labels = cleaned_ds.map(create_period_label)
 ```
 
-## 4\. Méthodes de classification (Première approche)
+## 4. Modèle 1 : Approche "Bag-of-Words" (TF-IDF)
 
-Ma première approche a servi de base. J'ai utilisé un `TfidfVectorizer` pour transformer le texte en vecteurs de fréquence de mots, puis entraîné un `SGDClassifier`.
+Nous utilisons TfidfVectorizer de Scikit-learn. Pour des raisons de performance et de gestion de la mémoire (RAM), des optimisations ont été nécessaires :
+
+* ngram_range=(1, 1) : Seuls les mots uniques (unigrammes) sont utilisés, ignorant les paires de mots (bigrammes) qui consommaient trop de mémoire.
+* max_features=5000 : Le vocabulaire est limité aux 5000 mots les plus fréquents.
+* min_df=5 : Un mot doit apparaître dans au moins 5 documents pour être conservé.
+* dtype=np.float32 : La matrice est stockée en 32 bits pour diviser par deux son poids en RAM.
+
+Le modèle est ensuite entraîné avec un SGDClassifier, un classifieur linéaire efficace pour le texte.
 
 ```py
-def train_and_evaluate_tfidf(dataset, period_length_value):
-    
-    # Séparer en ensembles d'entraînement (80%) et de test (20%)
-    train_test_split = dataset_with_labels.train_test_split(test_size=0.2, seed=42)
-    train_dataset = train_test_split['train']
-    test_dataset = train_test_split['test']
+# Initialiser le vectoriseur TF-IDF
+tfidf_vectorizer = TfidfVectorizer(
+    max_features=N_FEATURES_TFIDF,
+    ngram_range=(1, 1),
+    min_df=MIN_DF_TFIDF,
+    max_df=MAX_DF_TFIDF,
+    dtype=np.float32 
+)
 
-    # Extraire les textes et les labels pour une utilisation plus simple
-    train_texts = [ex['text'] for ex in train_dataset]
-    test_texts = [ex['text'] for ex in test_dataset]
-    train_labels = [ex['decade'] for ex in train_dataset]
-    test_labels = [ex['decade'] for ex in test_dataset]
-    
-    # Vectorisation
-    # Dans cette premiere etape le pretraitement n'exclus pas les stopwords
-    tfidf_vectorizer = TfidfVectorizer(max_features=5000, stop_words=None, min_df=3, max_df=0.85)
-    X_train_tfidf = tfidf_vectorizer.fit_transform(X_train)
-    X_test_tfidf = tfidf_vectorizer.transform(X_test)
-    
-    # Entraînement
-    sgd_classifier = SGDClassifier(loss='log_loss', random_state=42, max_iter=1000, tol=1e-3)
-    sgd_classifier.fit(X_train_tfidf, y_train)
-    
-    return sgd_classifier, tfidf_vectorizer, X_test, y_test
+# Adapter (fit) le vectoriseur et transformer les ensembles
+X_train_tfidf = tfidf_vectorizer.fit_transform(train_texts)
+X_test_tfidf = tfidf_vectorizer.transform(test_texts)
+
+# Entraîner le classifieur
+model_tfidf_sgd = train_sgd_with_loss_tracking(
+    X_train_tfidf, X_test_tfidf,
+    train_labels, test_labels,
+    "TF-IDF",
+    n_epochs=50
+)
 ```
 
-Pour l'évaluation de ce modèle j'ai utilise la précision brut. Elle n'était pas très bonne car l'objectif de cette étude est de s'approcher de la valeur de la date et non d'être exact
+## 5. Modèle 2 : Approche Sémantique (Embeddings)
 
-## 5\. Amélioration (Seconde approche)
+La seconde approche vise à capturer non seulement le vocabulaire, mais aussi le sens et la structure des phrases. Pour cela, j'utilise des embeddings de phrases.
 
-### 5.1. Constats et optimisations
-Après ce premier aperçu, plusieurs choix d'optimisation ont été faits :
+### 5.1. Optimisation pour les textes longs
 
-* augmentation de la qualité des données par radicalisation du prétraitement des données ([voir la partie pré-traitement](#32-prétraitement-des-textes))
+Les modèles Transformers (comme CamemBERT) ont une limite de tokens. Les textes étant beaucoup plus longs, on les échantillonne : pour chaque texte, on prend des passage des textes aléatoire, pour un total d'environ 400 mots.
 
-* élargissement de la granularité temporelle : plutôt que prévoir par décénies, j'ai augmenté en périodes de 50 ans. Ce choix vise à capter des tendances lexicale et stylistiques plutôt que des variations annuelles insignifiantes.
-
-* changement de la métrique d'évaluation : j'ai utilisé la différence moyenne entre la date réelle et la date prédite (MAE temporelle en années) — c'est plus pertinent que la précision (accuracy).
+De plus, pour éviter un crash de RAM lors de la génération des embeddings pour des milliers de textes, la fonction create_embeddings_batch est utilisée pour traiter les textes par lots.
 
 ### 5.2. Implémentation
 
-J'ai opté pour la création d'embeddings de phrases avec un modèle transformer pré-entrainé pour saisir la sémantique et le contexte.
-
-L'objectif est de transformer chaque texte en un vecteur qui représente son sens. Des textes sémantiquement similaires auront des vecteurs proches.
-
-Le modèle choisi est [dangvantuan/sentence-camembert-base](https://huggingface.co/dangvantuan/sentence-camembert-base), il spécialisé pour le français.
-
-Le code ci-dessous, illustre le chargement du modèle d'embedding et l'entraînement du classifieur :
+Le modèle choisi est `dangvantuan/sentence-camembert-base` ([voir sur Hugging Face](https://huggingface.co/dangvantuan/sentence-camembert-base)), spécialisé pour le français et la génération d'embeddings de phrases.
 
 ```py
-# Charger le modèle
-model = SentenceTransformer("dangvantuan/sentence-camembert-base")
+embedding_model = SentenceTransformer('dangvantuan/sentence-camembert-base')
 
-# Génération des embeddings
-# train_texts et test_texts sont créés lors du prétraitement
-X_train_embeddings = model.encode(train_texts, show_progress_bar=True)
-X_test_embeddings = model.encode(test_texts, show_progress_bar=True)
+# Échantillonner les textes
+train_texts_sampled = [sample_text_by_segment(text, n_words=100) for text in train_texts]
+test_texts_sampled = [sample_text_by_segment(text, n_words=100) for text in test_texts]
 
-# Entrainement
-sgd_classifier_emb = SGDClassifier(
-    loss='log_loss', 
-    random_state=42, 
-    max_iter=1000, 
-    tol=1e-3
+# Création des Embeddings par lots
+X_train_embedding = create_embeddings_batch(train_texts_sampled, embedding_model, batch_size=BATCH_SIZE)
+X_test_embedding = create_embeddings_batch(test_texts_sampled, embedding_model, batch_size=BATCH_SIZE)
+
+# Entraînement
+model_embedding_sgd_loss = train_with_loss_tracking(
+    X_train_embedding, X_test_embedding,
+    train_labels, test_labels,
+    "Embeddings (CamemBERT)",
+    n_epochs=50
 )
-sgd_classifier_emb.fit(X_train_embeddings, train_labels)
 ```
 
-## 6\. Comparaison et évaluation
+## 6. Comparaison et évaluation
 
-```md
-A ajouter au rapport :
-* Recherche de la période optimale par nuage de mots et cluster
-* Comparaison de TF-IDF et Embeddings
-  * graphiques de l'écart prédiction / réelle
-  * valeur moyen différence prédite / réelle
-* Comparaison de périodes 50 et 10 ans
+Pour comparer l'efficacité des deux approches (TF-IDF vs Embeddings), j'ai essayé plusieurs méthodes d'évaluation.
+
+### 6.1. Analyse des Courbes de Perte
+
+* Objectif : Détecter le surapprentissage (overfitting).
+* Interprétation : Un modèle idéal montre les deux courbes (entraînement et test) qui descendent et se stabilisent. Si la perte d'entraînement continue de baisser alors que la perte de test remonte, le modèle est en surapprentissage. Ici les modèles sont plutot stables.
+
+![Courbe du suivi de la perte (TF-IDF)](images/courbe-loss-tf-idf.png)
+
+![Courbe du suivi de la perte (Embeddings)](images/courbe-loss-embeddings.png)
+
+### 6.2. Évaluation Visuelle (Réel vs. Prédiction)
+
+Les graph montre la courbe de périodes réelles et celle de la prédiction des modèles, sur l'ensemble des données de test.
+
+* Interprétation : Un modèle parfait aurait tous ses points sur la ligne. Cette courbe permet de voir si un modèle a tendance à se tromper d'une seule période (ex: prédire "1700-1749" au lieu de "1750-1799") ou s'il fait des erreurs plus grossières.
+
+![Graph des courbes période réelle / prédiction pour les deux modèles](images/courbes-diff-reelle-predite.png)
+
+### 6.3. Tests de Prédiction Aléatoire et Accuracy
+
+J'ai également écrit une méthode qui permet de tester sur un texte aléatoire.
+
+```py
+def predict_random_text(data_source_df, vectorizer, model_tfidf, model_embedding):
+    """
+    Prend un texte aléatoire depuis le DataFrame source (df_labeled),
+    le nettoie (si nécessaire, mais il l'est déjà), le vectorise (TF-IDF),
+    crée son embedding (après échantillonnage), et affiche les prédictions
+    des deux modèles.
+    """
+    
+    # Récupérer un échantillon aléatoire
+    random_sample_df = data_source_df.sample(1)
+    
+    # Extraire le texte et le vrai label
+    # .iloc[0] pour obtenir les valeurs de la première ligne
+    text_to_predict = random_sample_df['text'].iloc[0]
+    true_label = random_sample_df['period'].iloc[0]
+
+    print(f"Texte : {text_to_predict[:250]}")
+    print(f"Période réelle : {true_label}")
+
+    # --- Prédiction TF-IDF ---
+    text_tfidf = vectorizer.transform([text_to_predict])
+    prediction_tfidf = model_tfidf.predict(text_tfidf)[0]
+    print(f"TF-IDF : {prediction_tfidf}")
+
+    # --- Prédiction Embeddings ---
+    text_sampled_emb = sample_text_by_segment(text_to_predict, n_words=100)
+    try:
+        embedding_model
+    except NameError:
+        print("Rechargement du modèle d'embedding pour la prédiction...")
+        embedding_model = SentenceTransformer('dangvantuan/sentence-camembert-base')
+    
+    text_embedding = embedding_model.encode([text_sampled_emb], show_progress_bar=False)
+    
+    prediction_embedding = model_embedding.predict(text_embedding)[0]
+    print(f"Embeddings : {prediction_embedding}s")
 ```
+
+## 7. Conclusion sur la classification
+
+Il est possible de classer des textes par période en se basant uniquement sur leur contenu. Les deux approches, TF-IDF et Embeddings, sont pertinentes, je pense que la méthode par embeddings doit être plus efficace sur beaucoup plus de données, ne serais ce sur le temps de traitement, qui reste moins long que TF-IDF.
+
+Je ne suis pas aller plus loins sur la classification, j'aurais aimé aller beaucoup plus loins. En passant par exemple par une étape de recherche de la durée de période optimal via clusters.
+
+# Traduction d'un texte d'une époque en une autre
+
