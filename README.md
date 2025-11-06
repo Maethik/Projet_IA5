@@ -18,9 +18,9 @@ Pour répondre à cette problématique, ma démarche a été la suivante :
 
 1.  **Exploration et Prétraitement :** Analyse du jeu de données, nettoyage des textes et création d'étiquettes de "périodes" (par tranches de 10 et 50 ans).
 
-2.  **Premier essaie :** Une première expérimentation utilisant TF-IDF avec SGDClassifier.
+2.  **Premier essai :** Une première expérimentation utilisant TF-IDF avec SGDClassifier.
 
-3.  **Second essaie :** Une seconde approche utilisant des *embeddings* de phrases pour capturer la sémantique du texte.
+3.  **Second essai :** Une seconde approche utilisant des *embeddings* de phrases pour capturer la sémantique du texte.
 
 4.  **Analyse et Comparaison :** Comparaison des performances des deux modèles.
 
@@ -33,22 +33,22 @@ Le jeu de données utilisé est `PleIAs/French-PD-Books` ([voir sur Hugging Face
 * file_id : id du fichier
 * ocr :
 * title : titre du livre
-* date : date de publication, peut être une année simple ou un interval
-* author : nom de l'autheur et ses dates de naissance et décès
-* page_count : nombre de page du livre
+* date : date de publication, peut être une année simple ou un intervalle
+* author : nom de l'auteur et ses dates de naissance et décès
+* page_count : nombre de pages du livre
 * word_count : nombre de mots du livre
-* character_count : nombre de personnages mentionnés dans le libre (fictifs ou réels)
+* character_count : nombre de personnages mentionnés dans le livre (fictifs ou réels)
 * complete_text : texte entier du livre
 
-**A noter :** les textes proviennent de scans OCR. Ils contiennent donc beaucoup de bruit : éléments de pagination (numéros de page, en‑têtes, pieds de page), sauts de ligne et retours à la ligne, coupures de mots au passage de ligne, caractères d'échappement, et parfois des erreurs d'OCR. Une étape de prétraitement robuste est donc indispensable avant toute modélisation..
+**A noter :** les textes proviennent de scans OCR. Ils contiennent donc beaucoup de bruit : éléments de pagination (numéros de page, en‑têtes, pieds de page), sauts de ligne et retours à la ligne, coupures de mots au passage de ligne, caractères d'échappement, et parfois des erreurs d'OCR. Une étape de prétraitement robuste est donc indispensable avant toute modélisation.
 
 #### Les dates
 
 Les dates ne sont pas toutes homogènes, on retrouve les formats suivants :
 
 * une année : 1860
-* un interval d'années : 1929-1931
-* interval d'années avec valeur manquante : 1876-???? ou ????-1876
+* un intervalle d'années : 1929-1931
+* intervalles d'années avec valeur manquante : 1876-???? ou ????-1876
 
 #### La taille du jeu de données
 
@@ -117,11 +117,11 @@ Ici, les traitements appliqués sont :
 * élimination des caractères non alphabétiques (en conservant les lettres accentuées françaises),
 * suppression partielle des numéros de page
 
-La suppression des numéros de pages est une étape délicate car leur mise en forme dépends de l'ouvrage et de l'éditeur le plus souvent. J'ai quand même repéré un écriture récurente : -- [NUMERO DE PAGE] --. J'ai supprimé ces cas là.
+La suppression des numéros de pages est une étape délicate car leur mise en forme dépend de l'ouvrage et de l'éditeur le plus souvent. J'ai quand même repéré une écriture récurrente : -- [NUMERO DE PAGE] --. J'ai supprimé ces cas-là.
 
 Cette fonction s'est avérée complexe et pas nécessairement plus performante.
 
-Pour l'approche par embeddings, j'ai opté pour une version simplifiée, se concentrant sur la miniscule, la suppression de la ponctuation et des stopwords.
+Pour l'approche par embeddings, j'ai opté pour une version simplifiée, se concentrant sur la minuscule, la suppression de la ponctuation et des stopwords.
 
 ```py
 def clean_text(example):
@@ -157,7 +157,7 @@ def clean_text(example):
     return {"text": text, "date": str(date)}
 ```
 
-Les stopwords utilisés ont été générés par Gemini après lui avoir donné les nuages de mots qui viendrons [plutard dans le rapport](#62-analyse-qualitative-nuages-de-mots) :
+Les stopwords utilisés ont été générés par Gemini après lui avoir donné les nuages de mots qui viendront [plus tard dans le rapport](#62-analyse-qualitative-nuages-de-mots) :
 
 ```py
 french_stopwords = set([
@@ -244,7 +244,7 @@ La seconde approche vise à capturer non seulement le vocabulaire, mais aussi le
 
 ### 5.1. Optimisation pour les textes longs
 
-Les modèles Transformers (comme CamemBERT) ont une limite de tokens. Les textes étant beaucoup plus longs, on les échantillonne : pour chaque texte, on prend des passage des textes aléatoire, pour un total d'environ 400 mots.
+Les modèles Transformers (comme CamemBERT) ont une limite de tokens. Les textes étant beaucoup plus longs, on les échantillonne : pour chaque texte, on prend des passages des textes aléatoires, pour un total d'environ 400 mots.
 
 De plus, pour éviter un crash de RAM lors de la génération des embeddings pour des milliers de textes, la fonction create_embeddings_batch est utilisée pour traiter les textes par lots.
 
@@ -279,7 +279,7 @@ Pour comparer l'efficacité des deux approches (TF-IDF vs Embeddings), j'ai essa
 ### 6.1. Analyse des Courbes de Perte
 
 * Objectif : Détecter le surapprentissage (overfitting).
-* Interprétation : Un modèle idéal montre les deux courbes (entraînement et test) qui descendent et se stabilisent. Si la perte d'entraînement continue de baisser alors que la perte de test remonte, le modèle est en surapprentissage. Ici les modèles sont plutot stables.
+* Interprétation : Un modèle idéal montre les deux courbes (entraînement et test) qui descendent et se stabilisent. Si la perte d'entraînement continue de baisser alors que la perte de test remonte, le modèle est en surapprentissage. Ici les modèles sont plutôt stables.
 
 ![Courbe du suivi de la perte (TF-IDF)](images/courbe-loss-tf-idf.png)
 
@@ -287,7 +287,7 @@ Pour comparer l'efficacité des deux approches (TF-IDF vs Embeddings), j'ai essa
 
 ### 6.2. Évaluation Visuelle (Réel vs. Prédiction)
 
-Les graph montre la courbe de périodes réelles et celle de la prédiction des modèles, sur l'ensemble des données de test.
+Les graphes montrent la courbe de périodes réelles et celle de la prédiction des modèles, sur l'ensemble des données de test.
 
 * Interprétation : Un modèle parfait aurait tous ses points sur la ligne. Cette courbe permet de voir si un modèle a tendance à se tromper d'une seule période (ex: prédire "1700-1749" au lieu de "1750-1799") ou s'il fait des erreurs plus grossières.
 
@@ -338,9 +338,10 @@ def predict_random_text(data_source_df, vectorizer, model_tfidf, model_embedding
 
 ## 7. Conclusion sur la classification
 
-Il est possible de classer des textes par période en se basant uniquement sur leur contenu. Les deux approches, TF-IDF et Embeddings, sont pertinentes, je pense que la méthode par embeddings doit être plus efficace sur beaucoup plus de données, ne serais ce sur le temps de traitement, qui reste moins long que TF-IDF.
+Il est possible de classer des textes par période en se basant uniquement sur leur contenu. Les deux approches, TF-IDF et Embeddings, sont pertinentes, je pense que la méthode par embeddings doit être plus efficace sur beaucoup plus de données, ne serait-ce que sur le temps de traitement, qui reste moins long que TF-IDF.
 
-Je ne suis pas aller plus loins sur la classification, j'aurais aimé aller beaucoup plus loins. En passant par exemple par une étape de recherche de la durée de période optimal via clusters.
+Je ne suis pas allé plus loin sur la classification, j'aurais aimé approfondir. En passant par exemple par une étape de recherche de la durée de période optimale via clusters.
 
 # Traduction d'un texte d'une époque en une autre
+
 
