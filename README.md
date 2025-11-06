@@ -342,6 +342,89 @@ Il est possible de classer des textes par période en se basant uniquement sur l
 
 Je ne suis pas allé plus loin sur la classification, j'aurais aimé approfondir. En passant par exemple par une étape de recherche de la durée de période optimale via clusters.
 
+
 # Traduction d'un texte d'une époque en une autre
 
+Pour cette partie, je n'ai pas entraîné de modèle, mais j'ai utilisé un LLM pré-entrainé. 
 
+J'ai utilisé le modèle Mistral-7B-Instruct [voir sur HuggingFace](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3).
+
+J'ai donné un prompt au modèle en lui donnant le rôle d'un expert en littérature française. Je lui fournis le texte, l'époque de départ et l'époque cible, en lui demandant de ne modifier que le style (vocabulaire, grammaire, syntaxe) tout en préservant le sens.
+
+```py
+def traduire_style_epoque(texte_original: str, epoque_originale: str, epoque_cible: str) -> str:
+    
+    # Un "prompt" système pour guider le modèle.
+    # Le format [INST]...[/INST] est spécifique à Mistral Instruct.
+    prompt = f"""[INST] Tu es un expert en histoire de la littérature française et un écrivain.
+    Ta tâche est de réécrire le texte suivant, qui a été écrit dans le style de l'époque "{epoque_originale}", pour qu'il corresponde parfaitement au style (vocabulaire, grammaire, syntaxe) de l'époque "{epoque_cible}".
+    Le sens, les idées et le contenu du texte original doivent être préservés au maximum. Ne fais que modifier le style.
+
+    TEXTE ORIGINAL ({epoque_originale}):
+    {texte_original}
+
+    RÉÉCRITURE ({epoque_cible}):
+    [/INST]"""
+    
+    reponse = llm(
+        prompt, 
+        temperature=0.7, 
+        max_new_tokens=1024, 
+        top_k=40
+    )
+    
+    return reponse
+```
+
+J'ai effectué deux tests pour voir le comportement du modèle :
+
+**Test 1 : Moderne (2024) vers Ancien (1670)**
+
+J'ai donné au modèle un texte très moderne et informel :
+
+```txt
+Original (2024) : "Salut les gars, J'ai checké le nouveau projet sur le drive, c'est vraiment un truc de ouf. Mon boss m'a dit que le client est super content et que le lancement est prévu pour ce week-end. On va pouvoir décompresser, c'est trop cool."
+```
+
+```txt
+Traduction (1670) : "Salut mes amis,
+J'ai vérifié le dernier projet sur mon bureau à la nuit, et je suis très content que cela soit bien arrivé.
+Mon patron m'a informé que le client est extrêmement satisfait et que le lancement est prévu pour ce weekend. 
+On peut décomprimer, c'est trop magnifique."
+```
+
+Le modèle a bien compris la tâche et a tenté de "traduire" les concepts :
+
+* "Salut les gars" -> "Salut mes amis"
+* "truc de ouf" -> "bien arrivé" (ici, il a un peu extrapolé)
+* "Mon boss" -> "Mon patron"
+* "super content" -> "extrêmement satisfait"
+
+Il a produit un hybride stylistique, avec des tournures correctes ("m'a informé que...") mais aussi des expressions étranges comme "sur mon bureau à la nuit" ou "c'est trop magnifique", qui mélange le "trop" moderne avec un vocabulaire plus ancien.
+
+**Test 2 : Ancien (1720) vers Moderne (2024)**
+
+J'ai ensuite tenté l'exercice inverse, avec un texte très formel du 18ème siècle, en demandant une traduction en "email professionnel de 2024".
+
+```txt
+Original (1720) : "Monseigneur, Je me fais l'honneur de vous adresser la présente missive afin de requérir votre bienveillance. Les affaires de votre domaine prospèrent, mais la météo capricieuse menace les récoltes. Je crains fort que la disette ne frappe nos manants si le ciel ne nous est point plus clément. Votre très humble et dévoué serviteur."
+```
+
+Le résultat a été très surprenant, le modèle a parfaitement adopté le style d'un email professionnel... mais en anglais.
+
+```txt
+Traduction (2024) : "Dear Sir,
+
+I trust this message finds you well and in good spirits. I am reaching out to kindly request your assistance with a matter of utmost concern for our community.
+
+As you are aware, the agricultural sector has been thriving under your leadership. However, recent weather conditions have posed an unprecedented challenge - excessive rainfall followed by sudden droughts have disrupted crop growth and yield. This unpredictable climate jeopardizes not only the livelihoods of our farmers but also food security for future generations.
+
+I urge you to consider taking proactive measures to mitigate the impact of these extreme weather events on agricultural productivity. It would be greatly appreciated if we could discuss potential solutions at your earliest convenience. 
+
+Thank you in advance for considering this matter and for your continued commitment towards the welfare of our region.
+
+Best regards,
+[Your Name]"
+```
+
+Cette courte exploration montre que la "traduction" stylistique est possible, elle est complexe et nécessiterait un fine-tuning plus poussé pour être fiable.
